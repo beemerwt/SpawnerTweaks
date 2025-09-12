@@ -6,10 +6,6 @@ import org.bukkit.entity.EntityType;
 
 import java.util.*;
 
-/**
- * @param perWorld  world name -> values (partial)
- * @param perEntity type -> values (partial)
- */
 record Settings(
         SpawnerValues defaults,
         Map<String, SpawnerValues> perWorld,

@@ -73,7 +73,7 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
             return true;
         }
 
-        if (args.length >= 1 && args[0].equalsIgnoreCase("applyall")) {
+        if (args[0].equalsIgnoreCase("applyall")) {
             if (args.length == 2) {
                 World w = Bukkit.getWorld(args[1]);
                 if (w == null) {
@@ -82,12 +82,11 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
                 }
                 sender.sendMessage("SpawnerTweaks: re-applying to loaded chunks in world '" + w.getName() + "'...");
                 applyAllLoadedAsync(sender, Collections.singletonList(w));
-                return true;
             } else {
                 sender.sendMessage("SpawnerTweaks: re-applying to all loaded chunks in all worlds...");
                 applyAllLoadedAsync(sender, Bukkit.getWorlds());
-                return true;
             }
+            return true;
         }
 
         if (args.length == 1 && args[0].equalsIgnoreCase("info")) {
@@ -158,7 +157,6 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
     private void applyToChunk(Chunk chunk) {
         try {
             // Paper/Spigot still expose tile entities via chunk.getTileEntities() in 1.20/1.21.
-            // If your API ever drops it, swap to Paper's chunk.getBlockEntities().
             for (BlockState state : chunk.getTileEntities()) {
                 if (state instanceof CreatureSpawner) {
                     tweakSpawner(state, "chunk");
@@ -171,8 +169,7 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
     }
 
     private void tweakSpawner(BlockState state, String reason) {
-        if (!(state instanceof CreatureSpawner)) return;
-        CreatureSpawner cs = (CreatureSpawner) state;
+        if (!(state instanceof CreatureSpawner cs)) return;
 
         EntityType type = cs.getSpawnedType();
         World world = cs.getWorld();
@@ -238,13 +235,8 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
         }
 
         if (changed) {
-            cs.update(); // push to world
-            if (getServer().getPluginManager().isPluginEnabled("Paper")) {
-                // Optional: On Paper, reset internal immediate delay to honor new range sooner.
-                // Not strictly necessary; Bukkit API does not expose direct reset beyond setDelay().
-            }
-            debug("Tweaked spawner at " + state.getLocation() +
-                    " [" + type + "] via " + reason);
+            cs.update();
+            debug("Tweaked spawner at " + state.getLocation() + " [" + type + "] via " + reason);
         }
     }
 
@@ -266,7 +258,7 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
 
         if (feedback != null) {
             if (worlds.size() == 1) {
-                feedback.sendMessage("SpawnerTweaks: updating " + total + " loaded chunks in '" + worlds.get(0).getName() + "'...");
+                feedback.sendMessage("SpawnerTweaks: updating " + total + " loaded chunks in '" + worlds.getFirst().getName() + "'...");
             } else {
                 feedback.sendMessage("SpawnerTweaks: updating " + total + " loaded chunks across " + worlds.size() + " worlds...");
             }
@@ -279,7 +271,7 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
             public void run() {
                 int n = Math.min(CHUNKS_PER_TICK, worklist.size());
                 for (int i = 0; i < n; i++) {
-                    Chunk c = worklist.remove(worklist.size() - 1);
+                    Chunk c = worklist.removeLast();
                     try {
                         applyToChunk(c);
                     } catch (Throwable t) {
@@ -356,7 +348,6 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
         sender.sendMessage("§e/spawnertweaks applyall §7- Re-apply current config to all loaded spawners (batched).");
         sender.sendMessage("§e/spawnertweaks applyall <world> §7- Re-apply only in the specified world.");
         sender.sendMessage("§e/spawnertweaks info §7- While looking at a spawner, show live values and effective config.");
-        // If you later add applyall or toggles, list them here too.
     }
 
     private void debug(String msg) {
