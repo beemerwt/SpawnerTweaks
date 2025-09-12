@@ -1,0 +1,19 @@
+name: SpawnerTweaks
+main: com.github.beemerwt.SpawnerTweaks
+version: 1.0.0
+api-version: '1.20'
+author: BeemerWT
+description: Global and per-entity tweaks for mob spawners
+commands:
+  spawnertweaks:
+    aliases: [stweaks, st]
+    description: SpawnerTweaks admin command
+    usage: |
+      /spawnertweaks help
+      /spawnertweaks reload
+      /spawnertweaks info
+      /spawnertweaks applyall [world]
+    permission: spawnertweaks.admin
+permissions:
+  spawnertweaks.admin:
+    default: op

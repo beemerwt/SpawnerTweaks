@@ -1,0 +1,38 @@
+# SpawnerTweaks - global spawner config
+
+# Set values to -1 to leave them unchanged (keep vanilla).
+# Vanilla baselines: Min=200, Max=800, Count=4, MaxNearby=6, PlayerRange=16, SpawnRange=4
+defaults:
+  minSpawnDelay: 200
+  maxSpawnDelay: 800
+  spawnCount: 4
+  maxNearbyEntities: 6
+  requiredPlayerRange: 16
+  spawnRange: 4
+
+# Optional per-entity overrides (EntityType names). Only set fields you want to override.
+# Example:
+# perEntity:
+#   ZOMBIE:
+#     minSpawnDelay: 40
+#     maxSpawnDelay: 80
+#     spawnCount: 6
+perEntity: {}
+
+# Optional per-world overrides (exact world names). Fields here override defaults for that world.
+# Example:
+# perWorld:
+#   world_nether:
+#     minSpawnDelay: 100
+perWorld: {}
+
+# Entity filters. If whitelist is non-empty, only those EntityTypes are affected.
+# Blacklist always excludes listed types. Names must match Bukkit EntityType.
+filters:
+  whitelist: []
+  blacklist: []
+
+# CAUTION: This is for EXTREMELY high values. This is here to prevent an absolute server meltdown
+# if you so decide to tweak the settings beyond reasonably.
+# Do not change this unless you absolutely know what you are doing,
+disable-safety-caps: false
