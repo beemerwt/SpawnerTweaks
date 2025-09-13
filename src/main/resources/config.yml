@@ -9,6 +9,7 @@ defaults:
   maxNearbyEntities: 6
   requiredPlayerRange: 16
   spawnRange: 4
+  spawnCap: 70
 
 # Optional per-entity overrides (EntityType names). Only set fields you want to override.
 # Example:
@@ -32,7 +33,8 @@ filters:
   whitelist: []
   blacklist: []
 
-# CAUTION: This is for EXTREMELY high values. This is here to prevent an absolute server meltdown
+# CAUTION: These are for EXTREMELY high values. This is here to prevent an absolute server meltdown
 # if you so decide to tweak the settings beyond reasonably.
-# Do not change this unless you absolutely know what you are doing,
+# Do not change these unless you absolutely know what you are doing,
 disable-safety-caps: false
+disable-spawn-caps: false

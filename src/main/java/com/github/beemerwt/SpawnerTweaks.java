@@ -1,15 +1,14 @@
 package com.github.beemerwt;
 
-import org.bukkit.Bukkit;
-import org.bukkit.Chunk;
-import org.bukkit.Material;
-import org.bukkit.World;
+import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.CreatureSpawner;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -37,11 +36,17 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
     private Logger log;
     private Settings settings;
 
+    private NamespacedKey ORIGIN_KEY;
+    private final Map<SpawnerKey, Integer> liveBySpawner = new HashMap<>();
+
     @Override
     public void onEnable() {
         this.log = getLogger();
         saveDefaultConfig();
         reloadSettings();
+
+        ORIGIN_KEY = new NamespacedKey(this, "origin_spawner");
+        rebuildLiveCountsFromLoadedWorlds(); // populate map from already-loaded entities
 
         Bukkit.getPluginManager().registerEvents(this, this);
         Objects.requireNonNull(getCommand("spawnertweaks")).setTabCompleter(this);
@@ -111,6 +116,11 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
             p.sendMessage("EntityType: " + String.valueOf(cs.getSpawnedType()));
             p.sendMessage("Safety caps active: " + (settings.disableSafetyCaps() ? "false (DISABLED)" : "true"));
 
+            SpawnerKey key = keyOf(cs);
+            int live = liveBySpawner.getOrDefault(key, 0);
+            sender.sendMessage("Live entities from this spawner: " + live +
+                    (!settings.disableSafetyCaps() ? " / " + settings.defaults().spawnCap() : ""));
+
             p.sendMessage("Current (live from block):");
             p.sendMessage("  minSpawnDelay=" + cs.getMinSpawnDelay() +
                     " maxSpawnDelay=" + cs.getMaxSpawnDelay() +
@@ -143,6 +153,17 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
     @EventHandler
     public void onChunkLoad(ChunkLoadEvent e) {
         applyToChunk(e.getChunk());
+
+        // Also rebuild just for this chunk’s entities
+        for (Entity ent : e.getChunk().getEntities()) {
+            String s = ent.getPersistentDataContainer().get(ORIGIN_KEY, org.bukkit.persistence.PersistentDataType.STRING);
+            if (s == null) continue;
+
+            SpawnerKey key = decode(s);
+            if (key == null) continue;
+
+            liveBySpawner.merge(key, 1, Integer::sum);
+        }
     }
 
     @EventHandler
@@ -152,7 +173,54 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
         tweakSpawner(b.getState(), "place");
     }
 
+    @EventHandler(ignoreCancelled = true)
+    public void onSpawnerSpawn(org.bukkit.event.entity.SpawnerSpawnEvent e) {
+        if (e.getSpawner() == null) return;
+
+        // Resolve cap; -1 means "no cap"
+        final int cap = settings.getSpawnCap(
+                e.getSpawner().getWorld().getName(),
+                e.getSpawner().getSpawnedType());
+
+        if (cap >= 0) {
+            SpawnerKey key = keyOf(e.getSpawner());
+            int live = liveBySpawner.getOrDefault(key, 0);
+            if (live >= cap) {
+                e.setCancelled(true);
+                return;
+            }
+
+            // Tag & increment (optimistic)
+            var ent = e.getEntity();
+            var pdc = ent.getPersistentDataContainer();
+            if (pdc.get(ORIGIN_KEY, org.bukkit.persistence.PersistentDataType.STRING) == null) {
+                pdc.set(ORIGIN_KEY, org.bukkit.persistence.PersistentDataType.STRING, encode(key));
+                liveBySpawner.put(key, live + 1);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onEntityDeath(org.bukkit.event.entity.EntityDeathEvent e) {
+        decrementIfTagged(e.getEntity());
+    }
+
+    // Paper-only optimization: count unload/removal too (keeps map tidy when chunks unload).
+    @EventHandler
+    public void onEntityRemove(EntityRemoveFromWorldEvent e) {
+        decrementIfTagged(e.getEntity());
+    }
+
     // ========== Core logic ==========
+
+    private void decrementIfTagged(org.bukkit.entity.Entity ent) {
+        var pdc = ent.getPersistentDataContainer();
+        String s = pdc.get(ORIGIN_KEY, org.bukkit.persistence.PersistentDataType.STRING);
+        if (s == null) return;
+        SpawnerKey key = decode(s);
+        if (key == null) return;
+        liveBySpawner.computeIfPresent(key, (k, v) -> Math.max(0, v - 1));
+    }
 
     private void applyToChunk(Chunk chunk) {
         try {
@@ -296,6 +364,19 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
         }.runTaskTimer(this, 1L, 1L);
     }
 
+    private void rebuildLiveCountsFromLoadedWorlds() {
+        liveBySpawner.clear();
+        for (World w : Bukkit.getWorlds()) {
+            for (org.bukkit.entity.Entity ent : w.getEntities()) {
+                String s = ent.getPersistentDataContainer().get(ORIGIN_KEY, org.bukkit.persistence.PersistentDataType.STRING);
+                if (s == null) continue;
+                SpawnerKey key = decode(s);
+                if (key == null) continue;
+                liveBySpawner.merge(key, 1, Integer::sum);
+            }
+        }
+    }
+
     private CreatureSpawner getTargetedSpawner(org.bukkit.entity.Player p, int maxDist) {
         // Works on Spigot/Paper 1.20–1.21 without NMS:
         org.bukkit.block.Block b = p.getTargetBlockExact(maxDist);
@@ -348,6 +429,24 @@ public final class SpawnerTweaks extends JavaPlugin implements Listener, TabComp
         sender.sendMessage("§e/spawnertweaks applyall §7- Re-apply current config to all loaded spawners (batched).");
         sender.sendMessage("§e/spawnertweaks applyall <world> §7- Re-apply only in the specified world.");
         sender.sendMessage("§e/spawnertweaks info §7- While looking at a spawner, show live values and effective config.");
+    }
+
+    private SpawnerKey keyOf(CreatureSpawner cs) {
+        var loc = cs.getLocation();
+        return new SpawnerKey(loc.getWorld().getUID(), loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
+    }
+
+    private String encode(SpawnerKey k) {
+        return k.worldId() + "|" + k.x() + "|" + k.y() + "|" + k.z();
+    }
+
+    private SpawnerKey decode(String s) {
+        try {
+            String[] p = s.split("\\|", 4);
+            return new SpawnerKey(UUID.fromString(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2]), Integer.parseInt(p[3]));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void debug(String msg) {

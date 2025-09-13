@@ -12,13 +12,15 @@ record Settings(
         Map<EntityType, SpawnerValues> perEntity,
         Set<EntityType> whitelist,
         Set<EntityType> blacklist,
-        boolean disableSafetyCaps)
+        boolean disableSafetyCaps,
+        boolean disableSpawnCaps)
 {
 
     record SpawnerValues(
             int minSpawnDelay,
             int maxSpawnDelay,
             int spawnCount,
+            int spawnCap,
             int maxNearbyEntities,
             int requiredPlayerRange,
             int spawnRange)
@@ -49,8 +51,20 @@ record Settings(
         Set<EntityType> white = readTypeList(cfg.getStringList("filters.whitelist"));
         Set<EntityType> black = readTypeList(cfg.getStringList("filters.blacklist"));
 
-        boolean disableCaps = cfg.getBoolean("disable-safety-caps", false);
-        return new Settings(defs, worldMap, entityMap, white, black, disableCaps);
+        boolean disableSafety = cfg.getBoolean("disable-safety-caps", false);
+        boolean disableCaps = cfg.getBoolean("disable-spawn-caps", false);
+        return new Settings(defs, worldMap, entityMap, white, black, disableSafety, disableCaps);
+    }
+
+    // choose first non-negative: per-entity -> per-world -> defaults
+    int getSpawnCap(String world, EntityType type) {
+        SpawnerValues e = perEntity.get(type);
+        if (e != null && e.spawnCap >= 0) return e.spawnCap;
+
+        SpawnerValues w = perWorld.get(world);
+        if (w != null && w.spawnCap >= 0) return w.spawnCap;
+
+        return defaults.spawnCap; // may be -1 to disable globally
     }
 
     boolean isEntityAllowed(EntityType t) {
@@ -68,11 +82,12 @@ record Settings(
         int min = pick(e, w, base, Field.MIN_DELAY);
         int max = pick(e, w, base, Field.MAX_DELAY);
         int cnt = pick(e, w, base, Field.COUNT);
+        int cap = pick(e, w, base, Field.CAP);
         int near = pick(e, w, base, Field.NEARBY);
         int pr = pick(e, w, base, Field.PLAYER_RANGE);
         int sr = pick(e, w, base, Field.SPAWN_RANGE);
 
-        return new SpawnerValues(min, max, cnt, near, pr, sr);
+        return new SpawnerValues(min, max, cnt, cap, near, pr, sr);
     }
 
     private static int pick(SpawnerValues e, SpawnerValues w, SpawnerValues b, Field f) {
@@ -83,7 +98,7 @@ record Settings(
         return value(b, f);
     }
 
-    private enum Field {MIN_DELAY, MAX_DELAY, COUNT, NEARBY, PLAYER_RANGE, SPAWN_RANGE}
+    private enum Field {MIN_DELAY, MAX_DELAY, COUNT, CAP, NEARBY, PLAYER_RANGE, SPAWN_RANGE}
 
     private static int value(SpawnerValues v, Field f) {
         if (v == null) return -1;
@@ -91,6 +106,7 @@ record Settings(
             case MIN_DELAY -> v.minSpawnDelay();
             case MAX_DELAY -> v.maxSpawnDelay();
             case COUNT -> v.spawnCount();
+            case CAP -> v.spawnCap();
             case NEARBY -> v.maxNearbyEntities();
             case PLAYER_RANGE -> v.requiredPlayerRange();
             case SPAWN_RANGE -> v.spawnRange();
@@ -99,14 +115,15 @@ record Settings(
     }
 
     private static SpawnerValues readValues(ConfigurationSection s) {
-        if (s == null) return new SpawnerValues(-1, -1, -1, -1, -1, -1);
+        if (s == null) return new SpawnerValues(-1, -1, -1, -1, -1, -1, -1);
         int min = s.getInt("minSpawnDelay", -1);
         int max = s.getInt("maxSpawnDelay", -1);
         int cnt = s.getInt("spawnCount", -1);
+        int cap = s.getInt("spawnCap", -1);
         int near = s.getInt("maxNearbyEntities", -1);
         int pr = s.getInt("requiredPlayerRange", -1);
         int sr = s.getInt("spawnRange", -1);
-        return new SpawnerValues(min, max, cnt, near, pr, sr);
+        return new SpawnerValues(min, max, cnt, cap, near, pr, sr);
     }
 
     private static Set<EntityType> readTypeList(List<String> raw) {
